@@ -1,0 +1,7 @@
+{
+  "name": "rejestr-fmea",
+  "private": true,
+  "scripts": {
+    "dev": "C:\\php-8.5.11\\php.exe -c php.ini dev.php"
+  }
+}

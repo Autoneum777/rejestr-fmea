@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rejestr FMEA</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <nav class="brandbar">
+    <span class="brandbar-app">Quality</span>
+    <button type="button" class="brandbar-tab active" data-view="fmea">Rejestr FMEA</button>
+    <button type="button" class="brandbar-tab" data-view="cp">Rejestr planów kontroli</button>
+    <img class="brandbar-logo" src="/static/logo-autoneum.png" alt="Autoneum" />
+  </nav>
+
+  <div id="view-fmea">
+  <header class="top">
+    <div>
+      <p class="eyebrow">Quality · FMEA</p>
+      <h1>Rejestr FMEA</h1>
+    </div>
+    <div class="top-actions">
+      <button type="button" class="btn ghost" id="btn-settings">Kolorystyka</button>
+      <button type="button" class="btn ghost" id="btn-import">Wczytaj plik Excel</button>
+      <input type="file" id="fmea-file" accept=".xlsx,.xlsm" hidden />
+      <button type="button" class="btn blue" id="btn-export">Eksport do Excela</button>
+      <button type="button" class="btn" id="btn-new">Nowe FMEA</button>
+    </div>
+  </header>
+
+  <section class="stats" id="stats"></section>
+
+  <section class="toolbar">
+    <input type="search" id="search" placeholder="Szukaj: nr FMEA, PN, projekt, osoba…" />
+    <div class="filters" id="filters">
+      <button type="button" class="chip active" data-status="" data-aktywne="1">Wszystkie</button>
+      <button type="button" class="chip" data-status="przeterminowane" data-aktywne="1">Przeterminowane</button>
+      <button type="button" class="chip" data-status="ostrzezenie" data-aktywne="1">Miesiąc do końca</button>
+      <button type="button" class="chip" data-status="aktualne" data-aktywne="1">Aktualne</button>
+      <button type="button" class="chip" data-status="" data-aktywne="0">Projekty nieaktywne</button>
+    </div>
+  </section>
+
+  <main class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Nr FMEA</th>
+          <th>Wyroby gotowe (PN)</th>
+          <th>Projekt</th>
+          <th>Rodzaj wyrobu</th>
+          <th>Osoba wiodąca</th>
+          <th>Data obecnego FMEA</th>
+          <th>Powód ost. rewizji</th>
+          <th>Termin kolejnej rewizji</th>
+          <th></th>
+        </tr>
+        <tr class="filters-row">
+          <th><input data-fmea-col="nr_fmea" placeholder="Filtr" /></th>
+          <th><input data-fmea-col="part_numbers" placeholder="Filtr" /></th>
+          <th><input data-fmea-col="projekt" placeholder="Filtr" /></th>
+          <th><input data-fmea-col="rodzaj_wyrobu" placeholder="Filtr" /></th>
+          <th><input data-fmea-col="osoba_wiodaca" placeholder="Filtr" /></th>
+          <th><input data-fmea-col="current_fmea_date" placeholder="rrrr-mm-dd" /></th>
+          <th><input data-fmea-col="last_review_reason" placeholder="Filtr" /></th>
+          <th><input data-fmea-col="next_due_date" placeholder="rrrr-mm-dd" /></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </main>
+  </div>
+
+  <div id="view-cp" hidden>
+    <header class="top">
+      <div>
+        <p class="eyebrow">Quality · Plany kontroli</p>
+        <h1>Rejestr planów kontroli</h1>
+      </div>
+      <div class="top-actions">
+        <button type="button" class="btn ghost" id="btn-cp-settings">Kolorystyka</button>
+        <button type="button" class="btn ghost" id="btn-cp-import">Wczytaj plik Excel</button>
+        <input type="file" id="cp-file" accept=".xlsx,.xlsm" hidden />
+        <button type="button" class="btn blue" id="btn-cp-export">Eksport do Excela</button>
+        <button type="button" class="btn" id="btn-cp-new">Nowy plan</button>
+      </div>
+    </header>
+    <section class="stats" id="cp-stats"></section>
+    <section class="toolbar">
+      <input type="search" id="cp-search" placeholder="Szukaj: nr planu, nr FMEA, symbol, model, osoba…" />
+      <div class="filters" id="cp-filters">
+        <button type="button" class="chip active" data-status="" data-aktywne="1">Wszystkie</button>
+        <button type="button" class="chip" data-status="przeterminowane" data-aktywne="1">Przeterminowane</button>
+        <button type="button" class="chip" data-status="ostrzezenie" data-aktywne="1">Miesiąc do końca</button>
+        <button type="button" class="chip" data-status="aktualne" data-aktywne="1">Aktualne</button>
+        <button type="button" class="chip" data-status="" data-aktywne="0">Nieaktywne</button>
+      </div>
+    </section>
+    <main class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Plan kontroli nr</th>
+            <th>Numer FMEA</th>
+            <th>Odpowiedzialny QE</th>
+            <th>Symbol wyrobu</th>
+            <th>Model samochodu</th>
+            <th>Nr rysunku lub części</th>
+            <th>Linia MES</th>
+            <th>Data rewizji</th>
+            <th>Termin kolejnej rewizji</th>
+            <th></th>
+          </tr>
+          <tr class="filters-row">
+            <th><input data-cp-col="nr_planu" placeholder="Filtr" /></th>
+            <th><input data-cp-col="nr_fmea" placeholder="Filtr" /></th>
+            <th><input data-cp-col="osoba_wiodaca" placeholder="Filtr" /></th>
+            <th><input data-cp-col="symbol_wyrobu" placeholder="Filtr" /></th>
+            <th><input data-cp-col="model" placeholder="Filtr" /></th>
+            <th><input data-cp-col="nr_rysunku" placeholder="Filtr" /></th>
+            <th><input data-cp-col="linia_mes" placeholder="Filtr" /></th>
+            <th><input data-cp-col="last_review_date" placeholder="rrrr-mm-dd" /></th>
+            <th><input data-cp-col="next_due_date" placeholder="rrrr-mm-dd" /></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="cp-rows"></tbody>
+      </table>
+    </main>
+  </div>
+
+  <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+  <aside class="drawer" id="drawer" hidden>
+    <div class="drawer-head">
+      <div>
+        <p class="eyebrow" id="d-nr"></p>
+        <h2 id="d-title">Szczegóły FMEA</h2>
+      </div>
+      <button type="button" class="icon-btn" id="btn-close" aria-label="Zamknij">×</button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+  </aside>
+
+  <div class="modal-backdrop" id="modal" hidden>
+    <form class="modal" id="review-form">
+      <h3>Aktualizacja daty FMEA</h3>
+      <p class="hint">Przegląd zdarzeniowy zapisuje się w historii i nie przesuwa terminu kolejnej pełnej rewizji.</p>
+      <label>Data przeglądu
+        <input type="date" name="review_date" required />
+      </label>
+      <fieldset>
+        <legend>Typ przeglądu</legend>
+        <label class="choice">
+          <input type="radio" name="review_type" value="pelny" required />
+          <span><strong>Pełny</strong> — resetuje termin kolejnej rewizji (+12 mies.) i ostrzeżenie (+11 mies.)</span>
+        </label>
+        <label class="choice">
+          <input type="radio" name="review_type" value="zdarzeniowy" />
+          <span><strong>Zdarzeniowy</strong> — bez wpływu na termin ostateczny kolejnej rewizji</span>
+        </label>
+      </fieldset>
+      <label>Powód rewizji
+        <input type="text" name="reason" required placeholder="np. Przegląd roczny, RN12/26…" />
+      </label>
+      <label>Komentarz (opcjonalnie)
+        <textarea name="comment" rows="2"></textarea>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btn-cancel">Anuluj</button>
+        <button type="submit" class="btn">Zapisz przegląd</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="edit-modal" hidden>
+    <form class="modal" id="edit-form">
+      <h3 id="edit-title">Nowe FMEA</h3>
+      <label>Nr FMEA <input name="nr_fmea" required /></label>
+      <label>Wyroby gotowe (PN) <textarea name="part_numbers" rows="2"></textarea></label>
+      <label>Projekt <input name="projekt" /></label>
+      <label>Rodzaj wyrobu <input name="rodzaj_wyrobu" /></label>
+      <label>Osoba wiodąca <input name="osoba_wiodaca" /></label>
+      <div id="new-date-block">
+        <label>Data FMEA
+          <input type="date" name="fmea_date" />
+        </label>
+        <p class="hint" id="next-due-preview">Termin kolejnego przeglądu: —</p>
+        <label>Powód (opcjonalnie)
+          <input type="text" name="reason" placeholder="np. Wydanie FMEA, wdrożenie projektu…" />
+        </label>
+      </div>
+      <label>Uwagi <textarea name="uwagi" rows="2"></textarea></label>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btn-edit-cancel">Anuluj</button>
+        <button type="submit" class="btn">Zapisz</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="settings-modal" hidden>
+    <form class="modal" id="settings-form">
+      <h3>Kolorystyka statusów</h3>
+      <p class="hint">Kolory wierszy na liście i w eksporcie Excela. Pole ostrzeżenia jest ukryte — posłuży później do notyfikacji.</p>
+      <label>Przeterminowane
+        <input type="color" name="color_overdue" />
+      </label>
+      <label>Miesiąc do końca
+        <input type="color" name="color_warning" />
+      </label>
+      <label>Ile dni przed terminem oznacza „miesiąc do końca”
+        <input type="number" name="warning_days" min="1" max="180" />
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btn-settings-cancel">Anuluj</button>
+        <button type="submit" class="btn">Zapisz kolory</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="delete-modal" hidden>
+    <form class="modal" id="delete-form">
+      <h3>Usunięcie bezpowrotne</h3>
+      <p class="hint" id="delete-hint"></p>
+      <label>Wpisz numer FMEA, aby potwierdzić
+        <input name="confirm" autocomplete="off" required />
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btn-delete-cancel">Anuluj</button>
+        <button type="submit" class="btn danger">Usuń na zawsze</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="cp-modal" hidden>
+    <form class="modal modal-scroll" id="cp-form">
+      <h3 id="cp-form-title">Nowy plan kontroli</h3>
+      <label>Plan kontroli nr <input name="nr_planu" required /></label>
+      <label>Numer FMEA <input name="nr_fmea" /></label>
+      <label>Odpowiedzialny QE <input name="qe" /></label>
+      <label>Symbol wyrobu <input name="symbol_wyrobu" /></label>
+      <label>Model samochodu <input name="model" /></label>
+      <label>Nr rysunku lub części <input name="nr_rysunku" /></label>
+      <label>Linia MES <input name="linia_mes" /></label>
+      <label>Data rewizji <input type="date" name="data_rewizji" required /></label>
+      <p class="hint" id="cp-due-preview">Termin kolejnej rewizji: —</p>
+      <label>Powód rewizji <input name="reason" required placeholder="Wymagane, aby zapisać" /></label>
+      <label>Status przeglądu
+        <select name="status_przegladu">
+          <option value="OK">OK</option>
+          <option value="Weryfikacja opóźniona">Weryfikacja opóźniona</option>
+          <option value="ND">ND</option>
+          <option value="Serwis">Serwis</option>
+        </select>
+      </label>
+      <label>Nazwa wyrobu <input name="nazwa_wyrobu" /></label>
+      <label>Nr zmiany <input name="nr_zmiany" /></label>
+      <label>Data zatwierdzenia <input type="date" name="data_zatwierdzenia" /></label>
+      <label>Nr rewizji <input name="nr_rewizji" /></label>
+      <label>Data anulowania <input type="date" name="data_anulowania" /></label>
+      <label>Uwagi <textarea name="uwagi" rows="2"></textarea></label>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btn-cp-cancel">Anuluj</button>
+        <button type="submit" class="btn">Zapisz</button>
+      </div>
+    </form>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

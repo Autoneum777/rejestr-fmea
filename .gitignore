@@ -1,0 +1,8 @@
+/vendor/
+/composer.phar
+/data/*.db
+/data/*.xlsx
+__pycache__/
+*.pyc
+.env
+.env.*
