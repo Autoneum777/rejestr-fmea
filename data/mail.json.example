@@ -1,0 +1,5 @@
+{
+  "from": "rejestr-fmea@autoneum.local",
+  "host": "smtp.twoja-domena.local",
+  "port": 25
+}

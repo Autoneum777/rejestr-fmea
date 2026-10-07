@@ -67,6 +67,7 @@ final class ImportControlPlans
         $inserted = 0;
         $linked = 0;
         $inactive = 0;
+        $register = new Register($db);
         $people = [];
         foreach ($db->all('SELECT nr_fmea, osoba_wiodaca FROM fmea') as $row) {
             $nr = Support::normNr($row['nr_fmea']);
@@ -103,6 +104,7 @@ final class ImportControlPlans
             if ($nrFmea !== '' && isset($people[$nrFmea]) && $qe === '') {
                 $qe = $people[$nrFmea];
             }
+            $qe = $register->rememberResponsible($qe);
             if ($nrFmea !== '' && isset($people[$nrFmea])) {
                 $linked++;
             }
@@ -157,7 +159,7 @@ final class ImportControlPlans
             $inserted++;
         }
         $db->pdo->commit();
-        return ['plans' => $inserted, 'linked' => $linked, 'inactive' => $inactive, 'source' => $path];
+        return ['plans' => $inserted, 'linked' => $linked, 'inactive' => $inactive, 'users' => $register->addedUsers(), 'source' => $path];
     }
 
     private function columns(Worksheet $sheet): array

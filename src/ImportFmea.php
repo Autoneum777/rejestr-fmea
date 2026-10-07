@@ -29,6 +29,7 @@ final class ImportFmea
         $stamp = Support::now();
         $inserted = 0;
         $reviews = 0;
+        $register = new Register($db);
         $db->pdo->beginTransaction();
         if ($replace) {
             $db->pdo->exec('DELETE FROM reviews');
@@ -38,6 +39,7 @@ final class ImportFmea
         foreach ($groups as $group) {
             $rows = $group['reviews'];
             usort($rows, static fn (array $a, array $b) => $a['review_date'] <=> $b['review_date']);
+            $group['osoba_wiodaca'] = $register->rememberResponsible((string) $group['osoba_wiodaca']);
             $last = $rows === [] ? null : $rows[array_key_last($rows)];
             $lastDate = $last['review_date'] ?? null;
             $nextDue = $lastDate ? Support::addMonths($lastDate, 12) : null;
@@ -90,7 +92,7 @@ final class ImportFmea
             }
         }
         $db->pdo->commit();
-        return ['fmea' => $inserted, 'reviews' => $reviews, 'source' => $path];
+        return ['fmea' => $inserted, 'reviews' => $reviews, 'users' => $register->addedUsers(), 'source' => $path];
     }
 
     private function groups(Worksheet $sheet, array $merged): array

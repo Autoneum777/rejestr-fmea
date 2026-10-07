@@ -106,6 +106,40 @@ CREATE TABLE IF NOT EXISTS change_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_change_log ON change_log(entity_type, entity_id, id);
+
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    imie TEXT NOT NULL,
+    nazwisko TEXT NOT NULL,
+    email TEXT NOT NULL DEFAULT '',
+    dzial TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS mail_reminders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_type TEXT NOT NULL,
+    entity_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    due_date TEXT NOT NULL,
+    sent_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_mail_reminders ON mail_reminders(entity_type, entity_id, kind, due_date);
+
+CREATE TABLE IF NOT EXISTS mail_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    email TEXT,
+    recipient_name TEXT,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    sent_at TEXT
+);
 SQL;
 
     public const DEFAULT_SETTINGS = [
@@ -163,6 +197,7 @@ SQL;
         $this->pdo->exec(self::SCHEMA);
         $this->ensureColumn('control_plans', 'linia_mes', 'TEXT');
         $this->ensureColumn('control_plans', 'data_anulowania', 'TEXT');
+        $this->ensureColumn('users', 'dzial', "TEXT NOT NULL DEFAULT ''");
         $stmt = $this->pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
         foreach (self::DEFAULT_SETTINGS as $key => $value) {
             $stmt->execute([$key, $value]);

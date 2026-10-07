@@ -10,6 +10,11 @@ const state = {
   reviewKind: "fmea",
   editingId: null,
   editingCp: null,
+  editingUser: null,
+  personKind: "cp",
+  users: [],
+  selectedFmea: new Set(),
+  selectedCp: new Set(),
   fmeaItems: [],
   cpItems: [],
   fmeaCols: {},
@@ -46,8 +51,15 @@ function statusLabel(status) {
   }[status] || status;
 }
 
+const APP_BASE = location.pathname === "/fmeareg" || location.pathname.startsWith("/fmeareg/") ? "/fmeareg" : "";
+
+function appUrl(url) {
+  const path = url.startsWith("/") ? url : `/${url}`;
+  return `${APP_BASE}${path}`;
+}
+
 async function api(url, options) {
-  const res = await fetch(url, {
+  const res = await fetch(appUrl(url), {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
@@ -100,13 +112,14 @@ function changesHtml(changes) {
 function renderRows(items) {
   const body = $("rows");
   if (!items.length) {
-    body.innerHTML = `<tr><td colspan="8" class="muted">Brak rekordów.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="10" class="muted">Brak rekordów.</td></tr>`;
     return;
   }
   body.innerHTML = items
     .map(
       (item) => `
       <tr class="row ${item.aktywne ? `row-${item.status}` : "row-inactive"}" data-id="${item.id}">
+        <td class="check"><input type="checkbox" data-fmea-check="${item.id}" ${state.selectedFmea.has(item.id) ? "checked" : ""} /></td>
         <td><strong>${item.nr_fmea}</strong></td>
         <td class="pn">${item.part_numbers || "—"}</td>
         <td>${item.projekt || "—"}</td>
@@ -323,6 +336,14 @@ $("filters").addEventListener("click", (e) => {
 });
 
 $("rows").addEventListener("click", (e) => {
+  const check = e.target.closest("[data-fmea-check]");
+  if (check) {
+    e.stopPropagation();
+    const id = Number(check.dataset.fmeaCheck);
+    if (check.checked) state.selectedFmea.add(id);
+    else state.selectedFmea.delete(id);
+    return;
+  }
   const reviewBtn = e.target.closest("[data-review]");
   if (reviewBtn) {
     e.stopPropagation();
@@ -355,7 +376,7 @@ $("review-form").addEventListener("submit", async (e) => {
       return;
     }
     const kind = state.reviewKind;
-    await api(`/${kind === "cp" ? "api/cp" : "api/fmea"}/${state.currentId}/reviews`, {
+    const data = await api(`/${kind === "cp" ? "api/cp" : "api/fmea"}/${state.currentId}/reviews`, {
       method: "POST",
       body: JSON.stringify({
         review_date: form.review_date.value,
@@ -365,6 +386,7 @@ $("review-form").addEventListener("submit", async (e) => {
       }),
     });
     closeReviewModal();
+    if (kind === "fmea" && data.notifications) notifySummary(data.notifications);
     if (kind === "cp") {
       await loadCp();
       if (!$("drawer").hidden) await openCpDrawer(state.currentId);
@@ -412,7 +434,7 @@ $("btn-export").onclick = () => {
   if (state.q) params.set("q", state.q);
   if (state.status) params.set("status", state.status);
   if (state.aktywne) params.set("aktywne", state.aktywne);
-  window.location.href = `/api/export?${params.toString()}`;
+  window.location.href = appUrl(`/api/export?${params.toString()}`);
 };
 
 $("btn-import").onclick = () => $("fmea-file").click();
@@ -424,10 +446,10 @@ $("fmea-file").addEventListener("change", async () => {
   const body = new FormData();
   body.append("file", file);
   try {
-    const res = await fetch("/api/import", { method: "POST", body });
+    const res = await fetch(appUrl("/api/import"), { method: "POST", body });
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || "Błąd importu");
-    alert(`Zaimportowano ${result.fmea} FMEA i ${result.reviews} przeglądów.`);
+    alert(`Zaimportowano ${result.fmea} FMEA i ${result.reviews} przeglądów. Nowi użytkownicy: ${result.users || 0}.`);
     closeDrawer();
     await loadList();
   } catch (err) {
@@ -509,13 +531,14 @@ function renderCpStats(summary) {
 function renderCpRows(items) {
   const body = $("cp-rows");
   if (!items.length) {
-    body.innerHTML = `<tr><td colspan="10" class="muted">Brak planów kontroli.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="11" class="muted">Brak planów kontroli.</td></tr>`;
     return;
   }
   body.innerHTML = items
     .map(
       (item) => `
       <tr class="row ${item.aktywne ? `row-${item.status}` : "row-inactive"}" data-cp="${item.id}">
+        <td class="check"><input type="checkbox" data-cp-check="${item.id}" ${state.selectedCp.has(item.id) ? "checked" : ""} /></td>
         <td><strong>${item.nr_planu}</strong></td>
         <td>${item.nr_fmea ? `${item.nr_fmea}${item.fmea_linked ? "" : " <span class='muted'>(brak w rejestrze)</span>"}` : "—"}</td>
         <td>${item.osoba_wiodaca || "—"}</td>
@@ -614,12 +637,88 @@ function showView(name) {
   state.view = name;
   $("view-fmea").hidden = name !== "fmea";
   $("view-cp").hidden = name !== "cp";
+  $("view-users").hidden = name !== "users";
   for (const tab of document.querySelectorAll(".brandbar-tab")) {
     tab.classList.toggle("active", tab.dataset.view === name);
   }
   closeDrawer();
   syncStickyHeaders();
   if (name === "cp") loadCp().catch((err) => alert(err.message));
+  if (name === "users") loadUsers().catch((err) => alert(err.message));
+}
+
+function notifySummary(items) {
+  if (!items.length) return;
+  const lines = items.map((item) => {
+    if (item.status === "wyslane") return `${item.name}: wysłano na ${item.email}`;
+    if (item.status === "brak_adresu") return `${item.name}: brak użytkownika z tym imieniem i nazwiskiem`;
+    if (item.status === "brak_email") return `${item.name}: brak adresu e-mail`;
+    return `${item.name}: zapisano do wysłania (${item.error || "oczekuje na serwer poczty"})`;
+  });
+  alert(`Powiadomienia o aktualizacji FMEA:\n${lines.join("\n")}`);
+}
+
+function userName(user) {
+  return `${user.imie} ${user.nazwisko}`;
+}
+
+async function loadUsers() {
+  const data = await api("/api/users");
+  state.users = data.items;
+  const hint = $("users-mail-hint");
+  hint.textContent = data.mail.ready
+    ? `Powiadomienia wychodzą z ${data.mail.from} przez ${data.mail.host}. E-mail i dział uzupełniasz przy użytkowniku.`
+    : "Osoba z Excela (Imię Nazwisko albo M.Nazwisko) pojawia się tutaj automatycznie. E-mail i dział uzupełniasz ręcznie. Miesiąc przed terminem wychodzi jedna wiadomość, a po terminie przypomnienie co tydzień. Wysyłka ruszy po uzupełnieniu api/data/mail.json.";
+  const body = $("user-rows");
+  body.innerHTML = data.items.length
+    ? data.items.map((user) => `
+      <tr>
+        <td>${user.imie}</td>
+        <td>${user.nazwisko}</td>
+        <td>${user.dzial || "—"}</td>
+        <td>${user.email || "—"}</td>
+        <td>
+          <button type="button" class="btn small ghost" data-user-edit="${user.id}">Edytuj</button>
+          <button type="button" class="btn small danger" data-user-delete="${user.id}">Usuń</button>
+        </td>
+      </tr>`).join("")
+    : `<tr><td colspan="5" class="muted">Brak użytkowników. Pojawią się po wczytaniu Excela z osobą Imię Nazwisko albo M.Nazwisko.</td></tr>`;
+}
+
+function openUserForm(user) {
+  const form = $("user-form");
+  form.reset();
+  state.editingUser = user ? user.id : null;
+  $("user-form-title").textContent = user ? "Edycja użytkownika" : "Nowy użytkownik";
+  if (user) {
+    form.imie.value = user.imie;
+    form.nazwisko.value = user.nazwisko;
+    form.dzial.value = user.dzial || "";
+    form.email.value = user.email || "";
+  }
+  $("user-modal").hidden = false;
+}
+
+async function openPersonModal(kind) {
+  const selected = kind === "fmea" ? state.selectedFmea : state.selectedCp;
+  if (!selected.size) {
+    alert("Zaznacz pozycje, którym chcesz zmienić osobę odpowiedzialną.");
+    return;
+  }
+  if (!state.users.length) {
+    const data = await api("/api/users");
+    state.users = data.items;
+  }
+  if (!state.users.length) {
+    alert("Najpierw dodaj użytkowników na zakładce Użytkownicy.");
+    return;
+  }
+  state.personKind = kind;
+  const form = $("person-form");
+  form.user_id.innerHTML = state.users.map((user) => `<option value="${user.id}">${userName(user)}${user.dzial ? ` · ${user.dzial}` : ""}${user.email ? ` · ${user.email}` : ""}</option>`).join("");
+  $("person-title").textContent = kind === "fmea" ? "Osoba wiodąca FMEA" : "Odpowiedzialny QE planu kontroli";
+  $("person-hint").textContent = `Zmiana obejmie zaznaczone pozycje: ${selected.size}.`;
+  $("person-modal").hidden = false;
 }
 
 document.querySelector(".brandbar").addEventListener("click", (e) => {
@@ -644,6 +743,14 @@ $("cp-filters").addEventListener("click", (e) => {
 });
 
 $("cp-rows").addEventListener("click", (e) => {
+  const check = e.target.closest("[data-cp-check]");
+  if (check) {
+    e.stopPropagation();
+    const id = Number(check.dataset.cpCheck);
+    if (check.checked) state.selectedCp.add(id);
+    else state.selectedCp.delete(id);
+    return;
+  }
   const reviewBtn = e.target.closest("[data-cp-review]");
   if (reviewBtn) {
     e.stopPropagation();
@@ -763,7 +870,7 @@ $("btn-cp-export").onclick = () => {
   if (state.cpQ) params.set("q", state.cpQ);
   if (state.cpStatus) params.set("status", state.cpStatus);
   if (state.cpAktywne) params.set("aktywne", state.cpAktywne);
-  window.location.href = `/api/cp/export?${params.toString()}`;
+  window.location.href = appUrl(`/api/cp/export?${params.toString()}`);
 };
 
 $("btn-cp-import").onclick = () => $("cp-file").click();
@@ -775,10 +882,10 @@ $("cp-file").addEventListener("change", async () => {
   const body = new FormData();
   body.append("file", file);
   try {
-    const res = await fetch("/api/cp/import", { method: "POST", body });
+    const res = await fetch(appUrl("/api/cp/import"), { method: "POST", body });
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || "Błąd importu");
-    alert(`Zaimportowano ${result.plans} planów, powiązanych z FMEA: ${result.linked}, nieaktywnych: ${result.inactive}.`);
+    alert(`Zaimportowano ${result.plans} planów, powiązanych z FMEA: ${result.linked}, nieaktywnych: ${result.inactive}. Nowi użytkownicy: ${result.users || 0}.`);
     closeDrawer();
     await loadCp();
   } catch (err) {
@@ -786,8 +893,98 @@ $("cp-file").addEventListener("change", async () => {
   }
 });
 
+function visibleIds(selector) {
+  return [...document.querySelectorAll(selector)].map((input) => Number(input.dataset.fmeaCheck || input.dataset.cpCheck));
+}
+
+$("fmea-check-all").addEventListener("change", (e) => {
+  for (const id of visibleIds("[data-fmea-check]")) {
+    if (e.target.checked) state.selectedFmea.add(id);
+    else state.selectedFmea.delete(id);
+  }
+  renderRows(state.fmeaItems.filter((item) => matchesCols(item, state.fmeaCols)));
+});
+$("cp-check-all").addEventListener("change", (e) => {
+  for (const id of visibleIds("[data-cp-check]")) {
+    if (e.target.checked) state.selectedCp.add(id);
+    else state.selectedCp.delete(id);
+  }
+  renderCpRows(state.cpItems.filter((item) => matchesCols(item, state.cpCols)));
+});
+$("btn-fmea-person").onclick = () => openPersonModal("fmea").catch((err) => alert(err.message));
+$("btn-cp-person").onclick = () => openPersonModal("cp").catch((err) => alert(err.message));
+$("btn-person-cancel").onclick = () => {
+  $("person-modal").hidden = true;
+};
+$("person-modal").addEventListener("click", (e) => {
+  if (e.target.id === "person-modal") $("person-modal").hidden = true;
+});
+$("person-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const selected = state.personKind === "fmea" ? state.selectedFmea : state.selectedCp;
+  try {
+    const result = await api(state.personKind === "fmea" ? "/api/fmea/osoba" : "/api/cp/osoba", {
+      method: "POST",
+      body: JSON.stringify({ ids: [...selected], user_id: Number(e.target.user_id.value) }),
+    });
+    $("person-modal").hidden = true;
+    selected.clear();
+    if (state.personKind === "fmea") {
+      $("fmea-check-all").checked = false;
+      await loadList();
+    } else {
+      $("cp-check-all").checked = false;
+      await loadCp();
+    }
+    alert(`Zmieniono osobę odpowiedzialną na ${result.name} w ${result.updated} pozycjach.`);
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+$("btn-user-new").onclick = () => openUserForm(null);
+$("btn-user-cancel").onclick = () => {
+  $("user-modal").hidden = true;
+};
+$("user-modal").addEventListener("click", (e) => {
+  if (e.target.id === "user-modal") $("user-modal").hidden = true;
+});
+$("user-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const payload = { imie: form.imie.value, nazwisko: form.nazwisko.value, email: form.email.value, dzial: form.dzial.value };
+  try {
+    if (state.editingUser) {
+      await api(`/api/users/${state.editingUser}`, { method: "PUT", body: JSON.stringify(payload) });
+    } else {
+      await api("/api/users", { method: "POST", body: JSON.stringify(payload) });
+    }
+    $("user-modal").hidden = true;
+    await loadUsers();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+$("user-rows").addEventListener("click", async (e) => {
+  const edit = e.target.closest("[data-user-edit]");
+  const remove = e.target.closest("[data-user-delete]");
+  if (edit) {
+    openUserForm(state.users.find((user) => user.id === Number(edit.dataset.userEdit)));
+  }
+  if (remove) {
+    const user = state.users.find((item) => item.id === Number(remove.dataset.userDelete));
+    if (!user || !confirm(`Usunąć użytkownika ${userName(user)}?`)) return;
+    try {
+      await api(`/api/users/${user.id}`, { method: "DELETE" });
+      await loadUsers();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+});
+
 loadList()
   .then(syncStickyHeaders)
   .catch((err) => {
-    $("rows").innerHTML = `<tr><td colspan="9">${err.message}</td></tr>`;
+    $("rows").innerHTML = `<tr><td colspan="10">${err.message}</td></tr>`;
   });

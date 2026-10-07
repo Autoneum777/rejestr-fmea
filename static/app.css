@@ -163,6 +163,7 @@ th, td {
   vertical-align: top;
   font-size: 13.5px;
 }
+th.check, td.check { width: 36px; text-align: center; }
 th {
   position: sticky;
   top: 0;

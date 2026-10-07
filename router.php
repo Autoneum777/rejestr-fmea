@@ -10,10 +10,24 @@ use App\Register;
 
 require __DIR__ . '/vendor/autoload.php';
 
-$uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
-$file = __DIR__ . str_replace('/', DIRECTORY_SEPARATOR, rawurldecode($uri));
-if ($uri !== '/' && is_file($file)) {
-    return false;
+$rawUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+$rawUri = rawurldecode(is_string($rawUri) ? $rawUri : '/');
+$uri = Http::stripBase($rawUri);
+$file = __DIR__ . str_replace('/', DIRECTORY_SEPARATOR, $uri);
+$relative = ltrim(str_replace('\\', '/', substr($file, strlen(__DIR__))), '/');
+$extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+if ($uri !== '/' && is_file($file) && $extension !== 'php' && !str_starts_with($relative, 'data/')) {
+    if ($rawUri === $uri) {
+        return false;
+    }
+    $types = [
+        'css' => 'text/css; charset=utf-8',
+        'js' => 'text/javascript; charset=utf-8',
+        'png' => 'image/png',
+        'html' => 'text/html; charset=utf-8',
+        'ico' => 'image/x-icon',
+    ];
+    Http::file($file, $types[$extension] ?? 'application/octet-stream');
 }
 
 $database = Database::open();
@@ -24,6 +38,11 @@ $path = Http::path();
 
 try {
     if ($method === 'GET' && $path === '/') {
+        try {
+            (new App\Notifier($database))->reminders();
+        } catch (Throwable $error) {
+            // Strona ma się otworzyć także wtedy, gdy kolejka poczty zgłosi błąd.
+        }
         Http::file(__DIR__ . '/templates/index.html', 'text/html; charset=utf-8');
     }
     route($method, $path, $register);
@@ -56,6 +75,9 @@ function route(string $method, string $path, Register $register): void
     if ($method === 'DELETE' && preg_match('#^/api/fmea/(\d+)$#', $path, $match)) {
         Http::json($register->deleteFmea((int) $match[1], Http::jsonBody()));
     }
+    if ($method === 'POST' && $path === '/api/fmea/osoba') {
+        Http::json($register->assignResponsible('fmea', Http::jsonBody()));
+    }
     if ($method === 'POST' && preg_match('#^/api/fmea/(\d+)/reviews$#', $path, $match)) {
         Http::json($register->addFmeaReview((int) $match[1], Http::jsonBody()), 201);
     }
@@ -85,6 +107,21 @@ function route(string $method, string $path, Register $register): void
     }
     if ($method === 'POST' && $path === '/api/cp') {
         Http::json($register->createCp(Http::jsonBody()), 201);
+    }
+    if ($method === 'POST' && $path === '/api/cp/osoba') {
+        Http::json($register->assignResponsible('cp', Http::jsonBody()));
+    }
+    if ($method === 'GET' && $path === '/api/users') {
+        Http::json($register->listUsers());
+    }
+    if ($method === 'POST' && $path === '/api/users') {
+        Http::json($register->saveUser(null, Http::jsonBody()), 201);
+    }
+    if ($method === 'PUT' && preg_match('#^/api/users/(\d+)$#', $path, $match)) {
+        Http::json($register->saveUser((int) $match[1], Http::jsonBody()));
+    }
+    if ($method === 'DELETE' && preg_match('#^/api/users/(\d+)$#', $path, $match)) {
+        Http::json($register->deleteUser((int) $match[1]));
     }
     if ($method === 'POST' && $path === '/api/cp/import') {
         $target = Database::dataDir() . DIRECTORY_SEPARATOR . 'import_cp.xlsx';

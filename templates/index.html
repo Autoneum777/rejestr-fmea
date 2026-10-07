@@ -4,14 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Rejestr FMEA</title>
-  <link rel="stylesheet" href="/static/app.css" />
+  <link rel="stylesheet" href="static/app.css" />
 </head>
 <body>
   <nav class="brandbar">
     <span class="brandbar-app">Quality</span>
     <button type="button" class="brandbar-tab active" data-view="fmea">Rejestr FMEA</button>
     <button type="button" class="brandbar-tab" data-view="cp">Rejestr planów kontroli</button>
-    <img class="brandbar-logo" src="/static/logo-autoneum.png" alt="Autoneum" />
+    <button type="button" class="brandbar-tab" data-view="users">Użytkownicy</button>
+    <img class="brandbar-logo" src="static/logo-autoneum.png" alt="Autoneum" />
   </nav>
 
   <div id="view-fmea">
@@ -25,6 +26,7 @@
       <button type="button" class="btn ghost" id="btn-import">Wczytaj plik Excel</button>
       <input type="file" id="fmea-file" accept=".xlsx,.xlsm" hidden />
       <button type="button" class="btn blue" id="btn-export">Eksport do Excela</button>
+      <button type="button" class="btn ghost" id="btn-fmea-person">Zmień osobę</button>
       <button type="button" class="btn" id="btn-new">Nowe FMEA</button>
     </div>
   </header>
@@ -46,6 +48,7 @@
     <table>
       <thead>
         <tr>
+          <th><input type="checkbox" id="fmea-check-all" title="Zaznacz widoczne" /></th>
           <th>Nr FMEA</th>
           <th>Wyroby gotowe (PN)</th>
           <th>Projekt</th>
@@ -57,6 +60,7 @@
           <th></th>
         </tr>
         <tr class="filters-row">
+          <th></th>
           <th><input data-fmea-col="nr_fmea" placeholder="Filtr" /></th>
           <th><input data-fmea-col="part_numbers" placeholder="Filtr" /></th>
           <th><input data-fmea-col="projekt" placeholder="Filtr" /></th>
@@ -84,6 +88,7 @@
         <button type="button" class="btn ghost" id="btn-cp-import">Wczytaj plik Excel</button>
         <input type="file" id="cp-file" accept=".xlsx,.xlsm" hidden />
         <button type="button" class="btn blue" id="btn-cp-export">Eksport do Excela</button>
+        <button type="button" class="btn ghost" id="btn-cp-person">Zmień osobę</button>
         <button type="button" class="btn" id="btn-cp-new">Nowy plan</button>
       </div>
     </header>
@@ -102,6 +107,7 @@
       <table>
         <thead>
           <tr>
+            <th><input type="checkbox" id="cp-check-all" title="Zaznacz widoczne" /></th>
             <th>Plan kontroli nr</th>
             <th>Numer FMEA</th>
             <th>Odpowiedzialny QE</th>
@@ -114,6 +120,7 @@
             <th></th>
           </tr>
           <tr class="filters-row">
+            <th></th>
             <th><input data-cp-col="nr_planu" placeholder="Filtr" /></th>
             <th><input data-cp-col="nr_fmea" placeholder="Filtr" /></th>
             <th><input data-cp-col="osoba_wiodaca" placeholder="Filtr" /></th>
@@ -127,6 +134,33 @@
           </tr>
         </thead>
         <tbody id="cp-rows"></tbody>
+      </table>
+    </main>
+  </div>
+
+  <div id="view-users" hidden>
+    <header class="top">
+      <div>
+        <p class="eyebrow">Quality · Powiadomienia</p>
+        <h1>Użytkownicy</h1>
+        <p class="hint" id="users-mail-hint">Osoba z Excela (Imię Nazwisko albo M.Nazwisko) pojawia się tutaj automatycznie. E-mail i dział uzupełniasz ręcznie. Miesiąc przed terminem wychodzi jedna wiadomość, a po terminie przypomnienie co tydzień.</p>
+      </div>
+      <div class="top-actions">
+        <button type="button" class="btn" id="btn-user-new">Nowy użytkownik</button>
+      </div>
+    </header>
+    <main class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Imię</th>
+            <th>Nazwisko</th>
+            <th>Dział</th>
+            <th>E-mail</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="user-rows"></tbody>
       </table>
     </main>
   </div>
@@ -267,6 +301,40 @@
     </form>
   </div>
 
-  <script src="/static/app.js"></script>
+  <div class="modal-backdrop" id="user-modal" hidden>
+    <form class="modal" id="user-form">
+      <h3 id="user-form-title">Nowy użytkownik</h3>
+      <label>Imię <input name="imie" required /></label>
+      <label>Nazwisko <input name="nazwisko" required /></label>
+      <label>Dział
+        <select name="dzial" required>
+          <option value="">Wybierz</option>
+          <option value="QD">QD</option>
+          <option value="PED">PED</option>
+        </select>
+      </label>
+      <label>E-mail <input name="email" type="email" placeholder="uzupełnisz później" /></label>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btn-user-cancel">Anuluj</button>
+        <button type="submit" class="btn">Zapisz</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="person-modal" hidden>
+    <form class="modal" id="person-form">
+      <h3 id="person-title">Zmiana osoby odpowiedzialnej</h3>
+      <p class="hint" id="person-hint"></p>
+      <label>Użytkownik
+        <select name="user_id" required></select>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btn-person-cancel">Anuluj</button>
+        <button type="submit" class="btn">Zapisz</button>
+      </div>
+    </form>
+  </div>
+
+  <script src="static/app.js"></script>
 </body>
 </html>

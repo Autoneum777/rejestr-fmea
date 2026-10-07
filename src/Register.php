@@ -30,8 +30,41 @@ final class Register
         ['aktywne', 'Status aktywności'],
     ];
 
+    private int $addedUsers = 0;
+
+    /** @var list<array<string, mixed>>|null */
+    private ?array $userCache = null;
+
     public function __construct(private readonly Database $db)
     {
+    }
+
+    public function addedUsers(): int
+    {
+        return $this->addedUsers;
+    }
+
+    public function rememberResponsible(string $raw): string
+    {
+        $raw = trim(preg_replace('/\s+/u', ' ', str_replace(["\r\n", "\r"], "\n", $raw)) ?? '');
+        if ($raw === '') {
+            return '';
+        }
+        $parts = preg_split('/\s*(?:\/|\n|;)\s*/u', $raw) ?: [];
+        $names = [];
+        foreach ($parts as $part) {
+            $part = trim($part);
+            if ($part === '') {
+                continue;
+            }
+            $person = $this->splitPerson($part);
+            if ($person === null) {
+                $names[] = $part;
+                continue;
+            }
+            $names[] = $this->ensureUser($person['imie'], $person['nazwisko']);
+        }
+        return implode(' / ', $names);
     }
 
     public function listFmea(string $q, string $status, string $aktywne): array
@@ -92,7 +125,7 @@ final class Register
                 Support::text($data['part_numbers'] ?? ''),
                 Support::text($data['projekt'] ?? ''),
                 Support::text($data['rodzaj_wyrobu'] ?? ''),
-                Support::text($data['osoba_wiodaca'] ?? ''),
+                $this->rememberResponsible(Support::text($data['osoba_wiodaca'] ?? '')),
                 Support::iso($fmeaDate),
                 Support::iso($nextDue),
                 Support::iso($warning),
@@ -134,6 +167,7 @@ final class Register
             Http::json(['error' => 'Nie znaleziono FMEA'], 404);
         }
         $this->db->pdo->beginTransaction();
+        $fields['osoba_wiodaca'] = $this->rememberResponsible($fields['osoba_wiodaca']);
         $this->db->logChanges('fmea', $id, $before, $fields, [
             ['nr_fmea', 'Nr FMEA'],
             ['part_numbers', 'Wyroby gotowe'],
@@ -230,7 +264,102 @@ final class Register
         $row = $this->db->one('SELECT * FROM fmea WHERE id = ?', [$id]);
         $reviews = $this->db->all('SELECT * FROM reviews WHERE fmea_id = ? ORDER BY review_date DESC, id DESC', [$id]);
         $this->db->pdo->commit();
-        return ['item' => $this->db->enrich($row ?? []), 'reviews' => $reviews];
+        $notifications = (new Notifier($this->db))->fmeaUpdated($row ?? [], $reviewType, $reason, $reviewDate);
+        return ['item' => $this->db->enrich($row ?? []), 'reviews' => $reviews, 'notifications' => $notifications];
+    }
+
+    public function listUsers(): array
+    {
+        return [
+            'items' => $this->db->all('SELECT * FROM users ORDER BY nazwisko, imie'),
+            'mail' => (new Mailer())->status(),
+        ];
+    }
+
+    public function saveUser(?int $id, array $data): array
+    {
+        $imie = Support::text($data['imie'] ?? '');
+        $nazwisko = Support::text($data['nazwisko'] ?? '');
+        $email = Support::text($data['email'] ?? '');
+        $dzial = strtoupper(Support::text($data['dzial'] ?? ''));
+        if ($imie === '' || $nazwisko === '') {
+            Http::json(['error' => 'Podaj imię i nazwisko'], 400);
+        }
+        if (!in_array($dzial, ['QD', 'PED'], true)) {
+            Http::json(['error' => 'Wybierz dział: QD albo PED'], 400);
+        }
+        if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            Http::json(['error' => 'Podaj prawidłowy adres e-mail'], 400);
+        }
+        $duplicate = $this->findUser($imie, $nazwisko);
+        if ($duplicate !== null && (int) $duplicate['id'] !== (int) $id) {
+            Http::json(['error' => 'Użytkownik o tym imieniu i nazwisku już jest'], 400);
+        }
+        $stamp = Support::now();
+        if ($id === null) {
+            $this->db->exec(
+                'INSERT INTO users (imie, nazwisko, email, dzial, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+                [$imie, $nazwisko, $email, $dzial, $stamp, $stamp]
+            );
+            $id = $this->db->lastId();
+        } else {
+            $existing = $this->db->one('SELECT * FROM users WHERE id = ?', [$id]);
+            if ($existing === null) {
+                Http::json(['error' => 'Nie znaleziono użytkownika'], 404);
+            }
+            $this->db->exec(
+                'UPDATE users SET imie = ?, nazwisko = ?, email = ?, dzial = ?, updated_at = ? WHERE id = ?',
+                [$imie, $nazwisko, $email, $dzial, $stamp, $id]
+            );
+        }
+        $this->userCache = null;
+        return ['item' => $this->db->one('SELECT * FROM users WHERE id = ?', [$id])];
+    }
+
+    public function deleteUser(int $id): array
+    {
+        $existing = $this->db->one('SELECT * FROM users WHERE id = ?', [$id]);
+        if ($existing === null) {
+            Http::json(['error' => 'Nie znaleziono użytkownika'], 404);
+        }
+        $this->db->exec('DELETE FROM users WHERE id = ?', [$id]);
+        return ['ok' => true];
+    }
+
+    public function assignResponsible(string $kind, array $data): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', (array) ($data['ids'] ?? [])))));
+        $user = $this->db->one('SELECT * FROM users WHERE id = ?', [(int) ($data['user_id'] ?? 0)]);
+        if ($ids === []) {
+            Http::json(['error' => 'Zaznacz co najmniej jedną pozycję'], 400);
+        }
+        if ($user === null) {
+            Http::json(['error' => 'Wybierz użytkownika'], 400);
+        }
+        $name = trim($user['imie'] . ' ' . $user['nazwisko']);
+        $updated = 0;
+        $this->db->pdo->beginTransaction();
+        foreach ($ids as $id) {
+            if ($kind === 'fmea') {
+                $before = $this->db->one('SELECT * FROM fmea WHERE id = ?', [$id]);
+                if ($before === null) {
+                    continue;
+                }
+                $this->db->logChanges('fmea', $id, $before, ['osoba_wiodaca' => $name], [['osoba_wiodaca', 'Osoba wiodąca']]);
+                $this->db->exec('UPDATE fmea SET osoba_wiodaca = ?, updated_at = ? WHERE id = ?', [$name, Support::now(), $id]);
+                $updated++;
+            } else {
+                $before = $this->db->one('SELECT * FROM control_plans WHERE id = ?', [$id]);
+                if ($before === null) {
+                    continue;
+                }
+                $this->db->logChanges('cp', $id, $before, ['qe' => $name], [['qe', 'Odpowiedzialny QE']]);
+                $this->db->exec('UPDATE control_plans SET qe = ?, updated_at = ? WHERE id = ?', [$name, Support::now(), $id]);
+                $updated++;
+            }
+        }
+        $this->db->pdo->commit();
+        return ['updated' => $updated, 'name' => $name];
     }
 
     public function exportFmea(string $q, string $status, string $aktywne): string
@@ -308,7 +437,7 @@ final class Register
             [
                 $nr,
                 Support::normNr($data['nr_fmea'] ?? ''),
-                Support::text($data['qe'] ?? ''),
+                $this->rememberResponsible(Support::text($data['qe'] ?? '')),
                 Support::text($data['symbol_wyrobu'] ?? ''),
                 Support::text($data['model'] ?? ''),
                 Support::text($data['nazwa_wyrobu'] ?? ''),
@@ -372,6 +501,7 @@ final class Register
             Http::json(['error' => 'Nie znaleziono planu kontroli'], 404);
         }
         $this->db->pdo->beginTransaction();
+        $fields['qe'] = $this->rememberResponsible($fields['qe']);
         $this->db->logChanges('cp', $id, $before, $fields, self::CP_TRACKED);
         $this->db->exec(
             'UPDATE control_plans
@@ -581,5 +711,68 @@ final class Register
     private function activeStatus(string $status): bool
     {
         return in_array(Support::fold($status), ['ok', 'weryfikacja opozniona'], true);
+    }
+
+    /** @return array{imie: string, nazwisko: string}|null */
+    private function splitPerson(string $part): ?array
+    {
+        $part = trim(preg_replace('/\s+/u', ' ', $part) ?? '');
+        if ($part === '' || Support::fold($part) === 'glowny') {
+            return null;
+        }
+        if (!str_contains($part, ' ')) {
+            $part = preg_replace('/\.(?=\p{L})/u', '. ', $part, 1) ?? $part;
+        }
+        if (!preg_match('/^(\S+)\s+(.+)$/u', $part, $match)) {
+            return null;
+        }
+        $imie = $match[1];
+        $nazwisko = trim($match[2]);
+        if (!preg_match('/\p{L}/u', $imie) || $nazwisko === '' || !preg_match('/\p{L}/u', $nazwisko)) {
+            return null;
+        }
+        return ['imie' => $imie, 'nazwisko' => $nazwisko];
+    }
+
+    private function ensureUser(string $imie, string $nazwisko): string
+    {
+        $existing = $this->findUser($imie, $nazwisko);
+        if ($existing !== null) {
+            return trim($existing['imie'] . ' ' . $existing['nazwisko']);
+        }
+        $stamp = Support::now();
+        $this->db->exec(
+            'INSERT INTO users (imie, nazwisko, email, dzial, created_at, updated_at) VALUES (?, ?, \'\', \'\', ?, ?)',
+            [$imie, $nazwisko, $stamp, $stamp]
+        );
+        $this->addedUsers++;
+        $this->userCache[] = [
+            'id' => $this->db->lastId(),
+            'imie' => $imie,
+            'nazwisko' => $nazwisko,
+            'email' => '',
+            'dzial' => '',
+        ];
+        return trim($imie . ' ' . $nazwisko);
+    }
+
+    private function findUser(string $imie, string $nazwisko): ?array
+    {
+        $key = Support::fold($imie . ' ' . $nazwisko);
+        foreach ($this->users() as $user) {
+            if (Support::fold($user['imie'] . ' ' . $user['nazwisko']) === $key) {
+                return $user;
+            }
+        }
+        return null;
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function users(): array
+    {
+        if ($this->userCache === null) {
+            $this->userCache = $this->db->all('SELECT * FROM users');
+        }
+        return $this->userCache;
     }
 }
