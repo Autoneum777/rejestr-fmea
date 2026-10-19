@@ -26,6 +26,7 @@ final class ExcelExport
 
     private const STATUS = [
         'przeterminowane' => 'Przeterminowane',
+        'wymaga_weryfikacji' => 'Wymaga weryfikacji',
         'ostrzezenie' => 'Miesiąc do końca',
         'aktualne' => 'Aktualne',
         'brak_terminu' => 'Brak terminu',
@@ -49,7 +50,7 @@ final class ExcelExport
         ['next_due_date', 'Termin kolejnej rewizji', 20],
         ['status', 'Status', 18],
         ['last_full_date', 'Ostatni pełny FMEA', 18],
-        ['years_since_full', 'Lata od pełnego FMEA', 19],
+        ['days_since_full', 'Dni od pełnego FMEA', 19],
         ['uwagi', 'Uwagi', 30],
     ];
 
@@ -144,6 +145,7 @@ final class ExcelExport
     {
         return [
             'przeterminowane' => $this->hex((string) ($settings['color_overdue'] ?? ''), 'F8D0CB'),
+            'wymaga_weryfikacji' => $this->hex((string) ($settings['color_verification'] ?? ''), 'D4E4F7'),
             'ostrzezenie' => $this->hex((string) ($settings['color_warning'] ?? ''), 'FFF2CC'),
             'aktualne' => 'E8F0C8',
             'brak_terminu' => 'EFEFEF',
@@ -196,7 +198,7 @@ final class ExcelExport
         foreach ($rows as $offset => $item) {
             $row = $headerRow + 1 + $offset;
             $status = (string) ($item['status'] ?? '');
-            $rowFill = in_array($status, ['przeterminowane', 'ostrzezenie'], true) ? $fills[$status] : null;
+            $rowFill = in_array($status, ['przeterminowane', 'wymaga_weryfikacji', 'ostrzezenie'], true) ? $fills[$status] : null;
             foreach ($columns as $index => [$key]) {
                 $col = $index + 1;
                 $value = $item[$key] ?? '';
@@ -217,7 +219,7 @@ final class ExcelExport
                 if ($value instanceof DateTimeInterface) {
                     $style->getNumberFormat()->setFormatCode('DD.MM.YYYY');
                     $style->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setVertical(Alignment::VERTICAL_TOP);
-                } elseif (in_array($key, ['nr_fmea', 'years_since_full'], true)) {
+                } elseif (in_array($key, ['nr_fmea', 'days_since_full'], true)) {
                     $style->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER)->setVertical(Alignment::VERTICAL_TOP);
                 } else {
                     $style->getAlignment()->setVertical(Alignment::VERTICAL_TOP)->setWrapText(true);

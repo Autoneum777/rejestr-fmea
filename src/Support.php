@@ -57,14 +57,13 @@ final class Support
         return $date->setDate($year, $month, $day);
     }
 
-    public static function yearsSince(?DateTimeImmutable $date, ?DateTimeImmutable $asOf = null): ?float
+    public static function daysSince(?DateTimeImmutable $date, ?DateTimeImmutable $asOf = null): ?int
     {
         if ($date === null) {
             return null;
         }
         $asOf ??= self::today();
-        $days = ((int) $asOf->format('U') - (int) $date->format('U')) / 86400;
-        return round($days / 365.25, 2);
+        return (int) $date->diff($asOf)->format('%r%a');
     }
 
     public static function normNr(mixed $value): string

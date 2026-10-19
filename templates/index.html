@@ -28,6 +28,7 @@
       <button type="button" class="btn blue" id="btn-export">Eksport do Excela</button>
       <button type="button" class="btn ghost" id="btn-fmea-person">Zmień osobę</button>
       <button type="button" class="btn" id="btn-new">Nowe FMEA</button>
+      <button type="button" class="btn danger" id="btn-fmea-purge">Wyczyść bazę</button>
     </div>
   </header>
 
@@ -90,6 +91,7 @@
         <button type="button" class="btn blue" id="btn-cp-export">Eksport do Excela</button>
         <button type="button" class="btn ghost" id="btn-cp-person">Zmień osobę</button>
         <button type="button" class="btn" id="btn-cp-new">Nowy plan</button>
+        <button type="button" class="btn danger" id="btn-cp-purge">Wyczyść bazę</button>
       </div>
     </header>
     <section class="stats" id="cp-stats"></section>
@@ -98,6 +100,7 @@
       <div class="filters" id="cp-filters">
         <button type="button" class="chip active" data-status="" data-aktywne="1">Wszystkie</button>
         <button type="button" class="chip" data-status="przeterminowane" data-aktywne="1">Przeterminowane</button>
+        <button type="button" class="chip" data-status="wymaga_weryfikacji" data-aktywne="1">Wymaga weryfikacji</button>
         <button type="button" class="chip" data-status="ostrzezenie" data-aktywne="1">Miesiąc do końca</button>
         <button type="button" class="chip" data-status="aktualne" data-aktywne="1">Aktualne</button>
         <button type="button" class="chip" data-status="" data-aktywne="0">Nieaktywne</button>
@@ -243,12 +246,29 @@
       <label>Miesiąc do końca
         <input type="color" name="color_warning" />
       </label>
+      <label>Wymaga weryfikacji (plany kontroli po aktualizacji FMEA)
+        <input type="color" name="color_verification" />
+      </label>
       <label>Ile dni przed terminem oznacza „miesiąc do końca”
         <input type="number" name="warning_days" min="1" max="180" />
       </label>
       <div class="modal-actions">
         <button type="button" class="btn ghost" id="btn-settings-cancel">Anuluj</button>
         <button type="submit" class="btn">Zapisz kolory</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="modal-backdrop" id="purge-modal" hidden>
+    <form class="modal" id="purge-form">
+      <h3 id="purge-title">Wyczyszczenie bazy</h3>
+      <p class="hint" id="purge-hint"></p>
+      <label>Wpisz frazę potwierdzenia
+        <input name="confirm" autocomplete="off" required />
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btn-purge-cancel">Anuluj</button>
+        <button type="submit" class="btn danger">Wyczyść na zawsze</button>
       </div>
     </form>
   </div>

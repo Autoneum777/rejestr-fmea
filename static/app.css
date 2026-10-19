@@ -112,12 +112,14 @@ h1 { margin: 0; font-size: 32px; color: var(--navy); }
   box-shadow: var(--shadow);
 }
 .stat.bad { border-left-color: var(--bad); }
+.stat.verify { border-left-color: #1a4d7a; }
 .stat.warn { border-left-color: var(--orange); }
 .stat.muted-stat { border-left-color: #9e9e9e; }
 .stat.muted-stat b { color: #616161; }
 .stat b { display: block; font-size: 28px; }
 .stat span { color: var(--muted); font-size: 13px; }
 .stat.bad b { color: var(--bad); }
+.stat.verify b { color: #1a4d7a; }
 .stat.warn b { color: var(--warn); }
 .stat.ok b { color: var(--ok); }
 
@@ -189,6 +191,7 @@ th {
 tr.row { cursor: pointer; }
 tr.row:hover { filter: brightness(0.97); }
 tr.row-przeterminowane td { background: var(--row-overdue); }
+tr.row-wymaga_weryfikacji td { background: var(--row-verification); }
 tr.row-ostrzezenie td { background: var(--row-warning); }
 tr.row-aktualne:hover td { background: #f4f7e4; }
 tr.row-inactive td { background: #e6e6e6; color: #616161; }
@@ -203,6 +206,7 @@ tr.row-inactive td { background: #e6e6e6; color: #616161; }
 }
 .pill.ostrzezenie { background: var(--row-warning); color: var(--orange); }
 .pill.przeterminowane { background: var(--row-overdue); color: var(--bad); }
+.pill.wymaga_weryfikacji { background: var(--row-verification); color: #1a4d7a; }
 .pill.aktualne { background: #e8f0c8; color: var(--ok); }
 .pill.brak_terminu { background: #efefef; color: var(--muted); }
 

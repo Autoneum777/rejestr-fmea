@@ -236,6 +236,32 @@ final class Register
         return ['ok' => true, 'nr_fmea' => $nr];
     }
 
+    public function clearFmea(array $data): array
+    {
+        $this->requirePhrase($data, 'WYCZYSC FMEA');
+        $this->db->pdo->beginTransaction();
+        $this->db->exec('DELETE FROM reviews');
+        $this->db->exec('DELETE FROM fmea');
+        $this->db->exec("DELETE FROM change_log WHERE entity_type = 'fmea'");
+        $this->db->exec("DELETE FROM mail_reminders WHERE entity_type = 'fmea'");
+        $this->db->exec("DELETE FROM sqlite_sequence WHERE name IN ('fmea', 'reviews')");
+        $this->db->pdo->commit();
+        return ['ok' => true];
+    }
+
+    public function clearCp(array $data): array
+    {
+        $this->requirePhrase($data, 'WYCZYSC PLANY');
+        $this->db->pdo->beginTransaction();
+        $this->db->exec('DELETE FROM cp_reviews');
+        $this->db->exec('DELETE FROM control_plans');
+        $this->db->exec("DELETE FROM change_log WHERE entity_type = 'cp'");
+        $this->db->exec("DELETE FROM mail_reminders WHERE entity_type = 'cp'");
+        $this->db->exec("DELETE FROM sqlite_sequence WHERE name IN ('control_plans', 'cp_reviews')");
+        $this->db->pdo->commit();
+        return ['ok' => true];
+    }
+
     public function addFmeaReview(int $id, array $data): array
     {
         [$reviewType, $reviewDate, $reason] = $this->reviewInput($data, 'Podaj datę przeglądu FMEA');
@@ -263,6 +289,7 @@ final class Register
         );
         $row = $this->db->one('SELECT * FROM fmea WHERE id = ?', [$id]);
         $reviews = $this->db->all('SELECT * FROM reviews WHERE fmea_id = ? ORDER BY review_date DESC, id DESC', [$id]);
+        $this->markCpAfterFmeaUpdate($row ?? [], $stamp);
         $this->db->pdo->commit();
         $notifications = (new Notifier($this->db))->fmeaUpdated($row ?? [], $reviewType, $reason, $reviewDate);
         return ['item' => $this->db->enrich($row ?? []), 'reviews' => $reviews, 'notifications' => $notifications];
@@ -543,9 +570,35 @@ final class Register
         $this->db->exec(
             'UPDATE control_plans
              SET data_rewizji = ?, last_full_date = ?, next_due_date = ?, warning_date = ?,
-                 last_review_date = ?, last_review_type = ?, last_review_reason = ?, updated_at = ?
+                 last_review_date = ?, last_review_type = ?, last_review_reason = ?,
+                 wymaga_weryfikacji = 0, updated_at = ?
              WHERE id = ?',
             [Support::iso($reviewDate), Support::iso($lastFull), Support::iso($nextDue), Support::iso($warning), Support::iso($reviewDate), $reviewType, $reason, $stamp, $id]
+        );
+        $row = $this->db->one('SELECT * FROM control_plans WHERE id = ?', [$id]);
+        $this->db->pdo->commit();
+        return ['item' => $this->cpPayload($row ?? [], $this->fmeaDirectory())];
+    }
+
+    public function confirmCpUnchanged(int $id): array
+    {
+        $item = $this->db->one('SELECT * FROM control_plans WHERE id = ?', [$id]);
+        if ($item === null) {
+            Http::json(['error' => 'Nie znaleziono planu kontroli'], 404);
+        }
+        if ((int) ($item['wymaga_weryfikacji'] ?? 0) !== 1) {
+            Http::json(['error' => 'Ten plan nie oczekuje na weryfikację po aktualizacji FMEA'], 400);
+        }
+        $stamp = Support::now();
+        $this->db->pdo->beginTransaction();
+        $this->db->exec(
+            'UPDATE control_plans SET wymaga_weryfikacji = 0, updated_at = ? WHERE id = ?',
+            [$stamp, $id]
+        );
+        $this->db->exec(
+            'INSERT INTO change_log (entity_type, entity_id, field_label, old_value, new_value, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)',
+            ['cp', $id, 'Weryfikacja po aktualizacji FMEA', 'Wymaga weryfikacji', 'Potwierdzono: dokument nie wymaga aktualizacji', $stamp]
         );
         $row = $this->db->one('SELECT * FROM control_plans WHERE id = ?', [$id]);
         $this->db->pdo->commit();
@@ -630,6 +683,7 @@ final class Register
             'przeterminowane' => count(array_filter($active, static fn (array $item) => $item['status'] === 'przeterminowane')),
             'ostrzezenie' => count(array_filter($active, static fn (array $item) => $item['status'] === 'ostrzezenie')),
             'aktualne' => count(array_filter($active, static fn (array $item) => $item['status'] === 'aktualne')),
+            'wymaga_weryfikacji' => count(array_filter($active, static fn (array $item) => $item['status'] === 'wymaga_weryfikacji')),
             'nieaktywne' => count($inactive),
         ];
     }
@@ -662,11 +716,29 @@ final class Register
     private function cpPayload(array $row, array $people, ?array $settings = null): array
     {
         $item = $this->db->enrich($row, $settings);
+        $item['wymaga_weryfikacji'] = (int) ($row['wymaga_weryfikacji'] ?? 0);
+        if ((int) ($item['aktywne'] ?? 1) === 1
+            && $item['wymaga_weryfikacji'] === 1
+            && ($item['status'] ?? '') !== 'przeterminowane') {
+            $item['status'] = 'wymaga_weryfikacji';
+        }
         $linked = $people[Support::normNr($item['nr_fmea'] ?? '')] ?? null;
         $item['fmea_linked'] = $linked !== null;
         $item['fmea_projekt'] = $linked['projekt'] ?? '';
         $item['osoba_wiodaca'] = ($item['qe'] ?? '') !== '' ? $item['qe'] : ($linked['osoba_wiodaca'] ?? '');
         return $item;
+    }
+
+    private function markCpAfterFmeaUpdate(array $fmea, string $stamp): void
+    {
+        $nr = Support::normNr($fmea['nr_fmea'] ?? '');
+        if ($nr === '' || (int) ($fmea['aktywne'] ?? 1) !== 1) {
+            return;
+        }
+        $this->db->exec(
+            'UPDATE control_plans SET wymaga_weryfikacji = 1, updated_at = ? WHERE nr_fmea = ? AND aktywne = 1',
+            [$stamp, $nr]
+        );
     }
 
     private function changes(string $type, int $id): array
@@ -706,6 +778,13 @@ final class Register
             Support::parseDate($item['next_due_date'] ?? null),
             Support::parseDate($item['warning_date'] ?? null),
         ];
+    }
+
+    private function requirePhrase(array $data, string $phrase): void
+    {
+        if (Support::text($data['confirm'] ?? '') !== $phrase) {
+            Http::json(['error' => 'Aby wyczyścić bazę, wpisz: ' . $phrase], 400);
+        }
     }
 
     private function activeStatus(string $status): bool

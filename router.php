@@ -63,6 +63,9 @@ function route(string $method, string $path, Register $register): void
     if ($method === 'POST' && $path === '/api/fmea') {
         Http::json($register->createFmea(Http::jsonBody()), 201);
     }
+    if ($method === 'POST' && $path === '/api/fmea/wyczysc') {
+        Http::json($register->clearFmea(Http::jsonBody()));
+    }
     if ($method === 'GET' && preg_match('#^/api/fmea/(\d+)$#', $path, $match)) {
         Http::json($register->getFmea((int) $match[1]));
     }
@@ -98,8 +101,8 @@ function route(string $method, string $path, Register $register): void
         }
         try {
             Http::json((new ImportFmea())->import($target));
-        } catch (RuntimeException $error) {
-            Http::json(['error' => $error->getMessage()], 404);
+        } catch (Throwable $error) {
+            Http::json(['error' => $error->getMessage()], 500);
         }
     }
     if ($method === 'GET' && $path === '/api/cp') {
@@ -107,6 +110,9 @@ function route(string $method, string $path, Register $register): void
     }
     if ($method === 'POST' && $path === '/api/cp') {
         Http::json($register->createCp(Http::jsonBody()), 201);
+    }
+    if ($method === 'POST' && $path === '/api/cp/wyczysc') {
+        Http::json($register->clearCp(Http::jsonBody()));
     }
     if ($method === 'POST' && $path === '/api/cp/osoba') {
         Http::json($register->assignResponsible('cp', Http::jsonBody()));
@@ -130,8 +136,8 @@ function route(string $method, string $path, Register $register): void
         }
         try {
             Http::json((new ImportControlPlans())->import($target));
-        } catch (RuntimeException $error) {
-            Http::json(['error' => $error->getMessage()], 404);
+        } catch (Throwable $error) {
+            Http::json(['error' => $error->getMessage()], 500);
         }
     }
     if ($method === 'GET' && $path === '/api/cp/export') {
@@ -143,6 +149,9 @@ function route(string $method, string $path, Register $register): void
     }
     if ($method === 'PUT' && preg_match('#^/api/cp/(\d+)$#', $path, $match)) {
         Http::json($register->updateCp((int) $match[1], Http::jsonBody()));
+    }
+    if ($method === 'POST' && preg_match('#^/api/cp/(\d+)/potwierdz-bez-zmian$#', $path, $match)) {
+        Http::json($register->confirmCpUnchanged((int) $match[1]));
     }
     if ($method === 'POST' && preg_match('#^/api/cp/(\d+)/reviews$#', $path, $match)) {
         Http::json($register->addCpReview((int) $match[1], Http::jsonBody()));

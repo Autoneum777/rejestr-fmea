@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS control_plans (
     last_review_type TEXT,
     last_review_reason TEXT,
     aktywne INTEGER NOT NULL DEFAULT 1,
+    wymaga_weryfikacji INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -145,6 +146,7 @@ SQL;
     public const DEFAULT_SETTINGS = [
         'color_overdue' => '#F8D0CB',
         'color_warning' => '#FFF2CC',
+        'color_verification' => '#D4E4F7',
         'warning_days' => '30',
     ];
 
@@ -197,6 +199,7 @@ SQL;
         $this->pdo->exec(self::SCHEMA);
         $this->ensureColumn('control_plans', 'linia_mes', 'TEXT');
         $this->ensureColumn('control_plans', 'data_anulowania', 'TEXT');
+        $this->ensureColumn('control_plans', 'wymaga_weryfikacji', 'INTEGER NOT NULL DEFAULT 0');
         $this->ensureColumn('users', 'dzial', "TEXT NOT NULL DEFAULT ''");
         $stmt = $this->pdo->prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
         foreach (self::DEFAULT_SETTINGS as $key => $value) {
@@ -315,7 +318,7 @@ SQL;
         } else {
             $status = 'brak_terminu';
         }
-        $item['years_since_full'] = Support::yearsSince($lastFull, $today);
+        $item['days_since_full'] = Support::daysSince($lastFull, $today);
         $item['status'] = $status;
         $item['current_fmea_date'] = Support::iso($lastReview ?? $lastFull);
         $item['aktywne'] = (int) ($item['aktywne'] ?? 1);
@@ -335,7 +338,7 @@ SQL;
 
     private function normalize(array $row): array
     {
-        foreach (['id', 'aktywne', 'fmea_id', 'plan_id', 'entity_id'] as $key) {
+        foreach (['id', 'aktywne', 'wymaga_weryfikacji', 'fmea_id', 'plan_id', 'entity_id'] as $key) {
             if (array_key_exists($key, $row) && $row[$key] !== null && $row[$key] !== '') {
                 $row[$key] = (int) $row[$key];
             }

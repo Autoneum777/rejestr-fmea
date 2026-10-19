@@ -15,6 +15,7 @@ const state = {
   users: [],
   selectedFmea: new Set(),
   selectedCp: new Set(),
+  purgeKind: "fmea",
   fmeaItems: [],
   cpItems: [],
   fmeaCols: {},
@@ -22,6 +23,7 @@ const state = {
   settings: {
     color_overdue: "#F8D0CB",
     color_warning: "#FFF2CC",
+    color_verification: "#D4E4F7",
     warning_days: "30",
   },
 };
@@ -33,6 +35,7 @@ function applyColors(settings) {
   const root = document.documentElement;
   root.style.setProperty("--row-overdue", state.settings.color_overdue);
   root.style.setProperty("--row-warning", state.settings.color_warning);
+  root.style.setProperty("--row-verification", state.settings.color_verification);
 }
 
 function fmtDate(value) {
@@ -45,6 +48,7 @@ function fmtDate(value) {
 function statusLabel(status) {
   return {
     przeterminowane: "Przeterminowane",
+    wymaga_weryfikacji: "Wymaga weryfikacji",
     ostrzezenie: "Miesiąc do końca",
     aktualne: "Aktualne",
     brak_terminu: "Brak terminu",
@@ -176,7 +180,7 @@ async function openDrawer(id) {
       <div class="muted">Data obecnego FMEA</div><div>${fmtDate(item.current_fmea_date)}</div>
       <div class="muted">Ostatni pełny FMEA</div><div>${fmtDate(item.last_full_date)}</div>
       <div class="muted">Termin kolejnej rewizji</div><div>${fmtDate(item.next_due_date)}</div>
-      <div class="muted">Lata od pełnego FMEA</div><div>${item.years_since_full ?? "—"}</div>
+      <div class="muted">Dni od pełnego FMEA</div><div>${item.days_since_full ?? "—"}</div>
       <div class="muted">Status</div><div><span class="pill ${item.aktywne ? item.status : "brak_terminu"}">${item.aktywne ? statusLabel(item.status) : "Nieaktywne"}</span></div>
       <div class="muted">Uwagi</div><div>${item.uwagi || "—"}</div>
     </div>
@@ -247,6 +251,22 @@ function openDeleteModal(item) {
 
 function closeDeleteModal() {
   $("delete-modal").hidden = true;
+}
+
+function openPurgeModal(kind) {
+  const phrase = kind === "fmea" ? "WYCZYSC FMEA" : "WYCZYSC PLANY";
+  const label = kind === "fmea" ? "rejestr FMEA" : "rejestr planów kontroli";
+  if (!confirm(`Wyczyścić ${label}?\n\nZnikną wszystkie pozycje i ich historia. Użytkownicy zostaną. Tego nie da się cofnąć.`)) {
+    return;
+  }
+  state.purgeKind = kind;
+  const form = $("purge-form");
+  form.reset();
+  form.dataset.phrase = phrase;
+  $("purge-title").textContent = kind === "fmea" ? "Wyczyszczenie rejestru FMEA" : "Wyczyszczenie planów kontroli";
+  $("purge-hint").textContent = `Aby potwierdzić, wpisz: ${phrase}`;
+  $("purge-modal").hidden = false;
+  form.confirm.focus();
 }
 
 function closeDrawer() {
@@ -447,7 +467,13 @@ $("fmea-file").addEventListener("change", async () => {
   body.append("file", file);
   try {
     const res = await fetch(appUrl("/api/import"), { method: "POST", body });
-    const result = await res.json();
+    const raw = await res.text();
+    let result;
+    try {
+      result = JSON.parse(raw);
+    } catch {
+      throw new Error("Import nie powiódł się. Serwer zwrócił błąd zamiast danych.");
+    }
     if (!res.ok) throw new Error(result.error || "Błąd importu");
     alert(`Zaimportowano ${result.fmea} FMEA i ${result.reviews} przeglądów. Nowi użytkownicy: ${result.users || 0}.`);
     closeDrawer();
@@ -461,6 +487,7 @@ function openSettingsModal() {
   const form = $("settings-form");
   form.color_overdue.value = state.settings.color_overdue.toLowerCase();
   form.color_warning.value = state.settings.color_warning.toLowerCase();
+  form.color_verification.value = (state.settings.color_verification || "#D4E4F7").toLowerCase();
   form.warning_days.value = state.settings.warning_days;
   $("settings-modal").hidden = false;
 }
@@ -481,12 +508,52 @@ $("settings-form").addEventListener("submit", async (e) => {
       body: JSON.stringify({
         color_overdue: form.color_overdue.value,
         color_warning: form.color_warning.value,
+        color_verification: form.color_verification.value,
         warning_days: form.warning_days.value,
       }),
     });
     applyColors(saved);
     $("settings-modal").hidden = true;
-    await loadList();
+    if (state.view === "cp") await loadCp();
+    else await loadList();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+$("btn-fmea-purge").onclick = () => openPurgeModal("fmea");
+$("btn-cp-purge").onclick = () => openPurgeModal("cp");
+$("btn-purge-cancel").onclick = () => {
+  $("purge-modal").hidden = true;
+};
+$("purge-modal").addEventListener("click", (e) => {
+  if (e.target.id === "purge-modal") $("purge-modal").hidden = true;
+});
+$("purge-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const phrase = form.dataset.phrase || "";
+  const typed = form.confirm.value.trim();
+  if (typed !== phrase) {
+    alert(`Wpisz dokładnie: ${phrase}`);
+    return;
+  }
+  try {
+    await api(state.purgeKind === "fmea" ? "/api/fmea/wyczysc" : "/api/cp/wyczysc", {
+      method: "POST",
+      body: JSON.stringify({ confirm: typed }),
+    });
+    $("purge-modal").hidden = true;
+    closeDrawer();
+    if (state.purgeKind === "fmea") {
+      state.selectedFmea.clear();
+      $("fmea-check-all").checked = false;
+      await loadList();
+    } else {
+      state.selectedCp.clear();
+      $("cp-check-all").checked = false;
+      await loadCp();
+    }
   } catch (err) {
     alert(err.message);
   }
@@ -522,6 +589,7 @@ function renderCpStats(summary) {
   $("cp-stats").innerHTML = `
     <div class="stat"><b>${summary.total}</b><span>Aktywnych planów</span></div>
     <div class="stat bad"><b>${summary.przeterminowane}</b><span>Przeterminowane</span></div>
+    <div class="stat verify"><b>${summary.wymaga_weryfikacji ?? 0}</b><span>Wymaga weryfikacji</span></div>
     <div class="stat warn"><b>${summary.ostrzezenie}</b><span>Miesiąc do końca</span></div>
     <div class="stat ok"><b>${summary.aktualne}</b><span>Aktualne</span></div>
     <div class="stat muted-stat"><b>${summary.nieaktywne ?? 0}</b><span>Serwis, poza statystykami</span></div>
@@ -603,6 +671,7 @@ async function openCpDrawer(id) {
       <div class="muted">Uwagi</div><div>${item.uwagi || "—"}</div>
     </div>
     <div class="drawer-actions">
+      ${item.wymaga_weryfikacji ? `<button type="button" class="btn" id="btn-cp-confirm">Potwierdź: dokument nie wymaga aktualizacji</button>` : ""}
       <button type="button" class="btn" id="btn-cp-review">Aktualizuj datę</button>
       <button type="button" class="btn ghost" id="btn-cp-edit">Edytuj dane</button>
     </div>
@@ -623,6 +692,19 @@ async function openCpDrawer(id) {
   $("drawer-backdrop").hidden = false;
   $("btn-cp-review").onclick = () => openReviewModal(id, "cp");
   $("btn-cp-edit").onclick = () => openCpForm(item);
+  const confirmBtn = $("btn-cp-confirm");
+  if (confirmBtn) {
+    confirmBtn.onclick = async () => {
+      if (!confirm("Potwierdzasz, że plan kontroli nie wymaga aktualizacji po zmianie powiązanego FMEA?")) return;
+      try {
+        await api(`/api/cp/${id}/potwierdz-bez-zmian`, { method: "POST", body: "{}" });
+        await openCpDrawer(id);
+        await loadCp();
+      } catch (err) {
+        alert(err.message);
+      }
+    };
+  }
 }
 
 function syncStickyHeaders() {
@@ -883,7 +965,13 @@ $("cp-file").addEventListener("change", async () => {
   body.append("file", file);
   try {
     const res = await fetch(appUrl("/api/cp/import"), { method: "POST", body });
-    const result = await res.json();
+    const raw = await res.text();
+    let result;
+    try {
+      result = JSON.parse(raw);
+    } catch {
+      throw new Error("Import nie powiódł się. Serwer zwrócił błąd zamiast danych.");
+    }
     if (!res.ok) throw new Error(result.error || "Błąd importu");
     alert(`Zaimportowano ${result.plans} planów, powiązanych z FMEA: ${result.linked}, nieaktywnych: ${result.inactive}. Nowi użytkownicy: ${result.users || 0}.`);
     closeDrawer();

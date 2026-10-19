@@ -15,10 +15,13 @@ final class Notifier
     public function fmeaUpdated(array $fmea, string $reviewType, string $reason, DateTimeImmutable $reviewDate): array
     {
         $nr = Support::normNr($fmea['nr_fmea'] ?? '');
-        if ($nr === '') {
+        if ($nr === '' || (int) ($fmea['aktywne'] ?? 1) !== 1) {
             return [];
         }
-        $plans = $this->db->all('SELECT * FROM control_plans WHERE nr_fmea = ? ORDER BY nr_planu', [$nr]);
+        $plans = $this->db->all(
+            'SELECT * FROM control_plans WHERE nr_fmea = ? AND aktywne = 1 ORDER BY nr_planu',
+            [$nr]
+        );
         $users = $this->db->all('SELECT * FROM users ORDER BY id');
         $groups = [];
         foreach ($plans as $plan) {

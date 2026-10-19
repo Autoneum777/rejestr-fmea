@@ -111,7 +111,7 @@ final class ImportFmea
             $warningRaw = ExcelBook::value($sheet, $merged, $row, 10);
             $dueRaw = ExcelBook::value($sheet, $merged, $row, 11);
             $uwagi = ExcelBook::value($sheet, $merged, $row, 15);
-            $nr = ExcelBook::nonempty($rawNr) ? rtrim(trim((string) $rawNr), '.') : null;
+            $nr = ExcelBook::nonempty($rawNr) ? rtrim(ExcelBook::text($rawNr), '.') : null;
             $isHeader = $nr !== null && !($current !== null && $current['nr_fmea'] === $nr);
             $hasReview = ExcelBook::nonempty($revRaw) || ExcelBook::nonempty($reason);
             $hasMaster = ExcelBook::nonempty($parts) || ExcelBook::nonempty($projekt) || ExcelBook::nonempty($rodzaj) || ExcelBook::nonempty($osoba);
@@ -121,11 +121,11 @@ final class ImportFmea
             if ($isHeader) {
                 $current = [
                     'nr_fmea' => $nr,
-                    'part_numbers' => ExcelBook::nonempty($parts) ? trim((string) $parts) : '',
-                    'projekt' => ExcelBook::nonempty($projekt) ? trim((string) $projekt) : '',
-                    'rodzaj_wyrobu' => ExcelBook::nonempty($rodzaj) ? trim((string) $rodzaj) : '',
-                    'osoba_wiodaca' => ExcelBook::nonempty($osoba) ? rtrim(trim((string) $osoba), ',') : '',
-                    'uwagi' => ExcelBook::nonempty($uwagi) ? trim((string) $uwagi) : '',
+                    'part_numbers' => ExcelBook::nonempty($parts) ? ExcelBook::text($parts) : '',
+                    'projekt' => ExcelBook::nonempty($projekt) ? ExcelBook::text($projekt) : '',
+                    'rodzaj_wyrobu' => ExcelBook::nonempty($rodzaj) ? ExcelBook::text($rodzaj) : '',
+                    'osoba_wiodaca' => ExcelBook::nonempty($osoba) ? rtrim(ExcelBook::text($osoba), ',') : '',
+                    'uwagi' => ExcelBook::nonempty($uwagi) ? ExcelBook::text($uwagi) : '',
                     'aktywne' => 1,
                     'last_row' => $row,
                     'reviews' => [],
@@ -135,19 +135,19 @@ final class ImportFmea
                 continue;
             } else {
                 if (ExcelBook::nonempty($parts)) {
-                    $current['part_numbers'] = trim((string) $parts);
+                    $current['part_numbers'] = ExcelBook::text($parts);
                 }
                 if (ExcelBook::nonempty($projekt)) {
-                    $current['projekt'] = trim((string) $projekt);
+                    $current['projekt'] = ExcelBook::text($projekt);
                 }
                 if (ExcelBook::nonempty($rodzaj)) {
-                    $current['rodzaj_wyrobu'] = trim((string) $rodzaj);
+                    $current['rodzaj_wyrobu'] = ExcelBook::text($rodzaj);
                 }
                 if (ExcelBook::nonempty($osoba)) {
-                    $current['osoba_wiodaca'] = rtrim(trim((string) $osoba), ',');
+                    $current['osoba_wiodaca'] = rtrim(ExcelBook::text($osoba), ',');
                 }
                 if (ExcelBook::nonempty($uwagi) && $current['uwagi'] === '') {
-                    $current['uwagi'] = trim((string) $uwagi);
+                    $current['uwagi'] = ExcelBook::text($uwagi);
                 }
                 $current['last_row'] = $row;
             }
@@ -162,10 +162,10 @@ final class ImportFmea
                 $current['reviews'][] = [
                     'review_date' => $reviewDate,
                     'review_type' => $this->classify($reason),
-                    'reason' => ExcelBook::nonempty($reason) ? trim((string) $reason) : '',
+                    'reason' => ExcelBook::nonempty($reason) ? ExcelBook::text($reason) : '',
                     'warning' => $warning,
                     'due' => $due,
-                    'comment' => ExcelBook::nonempty($uwagi) ? trim((string) $uwagi) : '',
+                    'comment' => ExcelBook::nonempty($uwagi) ? ExcelBook::text($uwagi) : '',
                 ];
             }
             $groups[array_key_last($groups)] = $current;
@@ -184,7 +184,7 @@ final class ImportFmea
             ];
             $serwis = false;
             foreach ($values as $value) {
-                if (mb_strtolower(trim((string) $value)) === 'serwis') {
+                if (mb_strtolower(ExcelBook::text($value)) === 'serwis') {
                     $serwis = true;
                     break;
                 }
@@ -203,7 +203,7 @@ final class ImportFmea
 
     private function classify(mixed $reason): string
     {
-        $text = trim((string) ($reason ?? ''));
+        $text = ExcelBook::text($reason);
         if ($text === '' || preg_match('/^\s*(-|przegl[aą]d\s*roczny|przegl[aą]d\s*fmea)\s*$/iu', $text)) {
             return 'pelny';
         }

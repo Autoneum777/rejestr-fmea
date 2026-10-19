@@ -18,7 +18,7 @@ final class ExcelBook
     {
         $map = [];
         foreach ($sheet->getMergeCells() as $range) {
-            [$startCol, $startRow, $endCol, $endRow] = Coordinate::rangeBoundaries($range);
+            [[$startCol, $startRow], [$endCol, $endRow]] = Coordinate::rangeBoundaries($range);
             for ($row = $startRow; $row <= $endRow; $row++) {
                 for ($col = $startCol; $col <= $endCol; $col++) {
                     $map[$row][$col] = [$startRow, $startCol];
@@ -62,15 +62,20 @@ final class ExcelBook
         return !(is_string($value) && trim($value) === '');
     }
 
-    public static function clean(mixed $value): string
+    public static function text(mixed $value): string
     {
         if ($value instanceof DateTimeInterface) {
             return $value->format('Y-m-d');
         }
-        if ($value === null) {
+        if ($value === null || is_array($value)) {
             return '';
         }
-        $text = trim((string) $value);
+        return trim((string) $value);
+    }
+
+    public static function clean(mixed $value): string
+    {
+        $text = self::text($value);
         if (in_array(mb_strtolower($text), ['--', '-', 'none', 'nd'], true)) {
             return '';
         }
